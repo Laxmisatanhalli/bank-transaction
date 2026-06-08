@@ -1,10 +1,15 @@
-const express = require ('express');
-const {connectTodb} = require('./config/db');
 
+const express = require ('express');
+
+const cookieParser = require('cookie-parser');
+const authRoutes = require('../src/routes/auth.routes');
 
 
 const app = express();
-connectTodb();
+app.use(express.json());
+app.use(cookieParser());
+app.use('/api/auth', authRoutes);
 
 
 module.exports = app;
+//createing and config the server
