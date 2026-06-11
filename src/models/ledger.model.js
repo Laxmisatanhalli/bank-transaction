@@ -40,6 +40,9 @@ const ledgerSchema = new mogoose.Schema({
   ledgerSchema.pre('deleteOne', preventLedgerModification);
   ledgerSchema.pre('remove', preventLedgerModification);
   ledgerSchema.pre('deleteMany', preventLedgerModification);
+  legderSchema.pre('updateMany', preventLedgerModification);
+  ledgerSchema.pre('findOneAndDelete', preventLedgerModification);
+  ledgerSchema.pre('findOneAndRemove', preventLedgerModification);
 
 const ledgerModel = mogoose.model('Ledger', ledgerSchema);
 
