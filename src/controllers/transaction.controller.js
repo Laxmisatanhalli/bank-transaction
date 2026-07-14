@@ -2,8 +2,7 @@ const transactionModel = require('../models/transaction.model');
 const ledgerModel = require('../models/ledger.model');
 const accountModel = require('../models/account.model');
 const emailService = require('../services/email.service');
-
-
+const mongoose = require('mongoose');
 
 /**
  * - Create a new transaction
@@ -32,15 +31,15 @@ async function createTransaction(req, res) {
      });
   }
 
-  const fromAccount = await accountModel.findOne({ 
+  const fromUserAccount = await accountModel.findOne({ 
     _id: fromAccount, 
   })
 
-  const toAccount = await accountModel.findOne({
+  const toUserAccount = await accountModel.findOne({
     _id: toAccount, 
     })
 
-    if (!fromAccount || !toAccount) {
+    if (!fromUserAccount || !toUserAccount) {
       return res.status(400).json({ 
         message: 'Invalid fromAccount or toAccount' 
       });
@@ -78,14 +77,64 @@ async function createTransaction(req, res) {
   }
 
   /** 3. Check account status */
-  if(fromAccount.status !== 'ACTIVE' || toAccount.status !== 'ACTIVE') {
+  if(fromUserAccount.status !== 'ACTIVE' || toUserAccount.status !== 'ACTIVE') {
     return res.status(400).json({ 
       message: 'Both accounts must be active to process transaction' 
     });
   }
 
   /** 4. Derive sender balance from Ledger */
-  
+   const balance = await fromUserAccount.getBalance();
 
+   if (balance < amount) {
+    return res.status(400).json({ 
+      message: `Insufficient balance. current balance is ${balance}`
+    });
+   }
+
+   /** 5. Create transaction (PENDING) */
+
+   const session = await mongoose.startSession();
+   session.startTransaction();
+
+   const transaction = await transactionModel.create({
+    fromAccount,
+    toAccount,
+    amount,
+    idempotencyKey,
+    status: 'PENDING'
+  }, { session });
+
+  const debitLedgerEntry = await ledgerModel.create({
+    account: fromAccount,
+    amount: amount,
+    transaction: transaction._id,
+    type: 'debit'
+  }, { session });
+
+
+  const creditLedgerEntry = await ledgerModel.create({
+    account: toAccount,
+    amount: amount,
+    transaction: transaction._id,
+    type: 'credit'
+  }, { session });
+
+  transaction.status = 'COMPLETED';
+  await transaction.save({ session });
+
+  await session.commitTransaction();
+  session.endSession();
+
+  /** 10. Send email notification */
+
+  await emailService.sendTransactionEmail(req.user.email, req.user.name, amount, toAccount);
+
+  res.status(201).json({
+    message: 'Transaction completed successfully',
+    transaction
+  });
 
 }
+
+module.exports = { createTransaction };
