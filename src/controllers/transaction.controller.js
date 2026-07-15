@@ -2,7 +2,7 @@ const transactionModel = require('../models/transaction.model');
 const ledgerModel = require('../models/ledger.model');
 const accountModel = require('../models/account.model');
 const emailService = require('../services/email.service');
-const mongoose = require('mongoose');
+const { sequelize } = require('../config/db'); // changed: mongoose -> sequelize instance
 
 /**
  * - Create a new transaction
@@ -15,10 +15,9 @@ const mongoose = require('mongoose');
  * 6. Create DEBIT ledger entry
  * 7. Create CREDIT ledger entry
  * 8. Mark transaction COMPLETED
- * 9. Commit MongoDB session
+ * 9. Commit transaction
  * 10. Send email notification
  */
-
 
 async function createTransaction(req, res) {
 
@@ -32,11 +31,11 @@ async function createTransaction(req, res) {
   }
 
   const fromUserAccount = await accountModel.findOne({ 
-    _id: fromAccount, 
+    where: { id: fromAccount } // changed: _id -> where: { id }
   })
 
   const toUserAccount = await accountModel.findOne({
-    _id: toAccount, 
+    where: { id: toAccount } // changed: _id -> where: { id }
     })
 
     if (!fromUserAccount || !toUserAccount) {
@@ -47,7 +46,7 @@ async function createTransaction(req, res) {
 
     /** 2. Validate idempotency key */
     const isTransactionAlreadyExists = await transactionModel.findOne({
-      idempotencyKey: idempotencyKey
+      where: { idempotencyKey } // changed: added where wrapper
     })
 
     if(isTransactionAlreadyExists){
@@ -94,37 +93,37 @@ async function createTransaction(req, res) {
 
    /** 5. Create transaction (PENDING) */
 
-   const session = await mongoose.startSession();
-   session.startTransaction();
+   const t = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
+
+   try { // added: try/catch required to rollback on failure
 
    const transaction = await transactionModel.create({
-    fromAccount,
-    toAccount,
+    fromAccountId: fromAccount, // fixed: was fromAccount, must match model field name
+    toAccountId: toAccount, // fixed: was toAccount, must match model field name
     amount,
     idempotencyKey,
     status: 'PENDING'
-  }, { session });
+  }, { transaction: t }); // changed: session -> transaction: t
 
   const debitLedgerEntry = await ledgerModel.create({
-    account: fromAccount,
+    accountId: fromAccount, // fixed: was account, must match model field name
     amount: amount,
-    transaction: transaction._id,
+    transactionId: transaction.id, // fixed: was transaction, must match model field name
     type: 'debit'
-  }, { session });
+  }, { transaction: t });
 
 
   const creditLedgerEntry = await ledgerModel.create({
-    account: toAccount,
+    accountId: toAccount, // fixed: was account, must match model field name
     amount: amount,
-    transaction: transaction._id,
+    transactionId: transaction.id, // fixed: was transaction, must match model field name
     type: 'credit'
-  }, { session });
+  }, { transaction: t });
 
   transaction.status = 'COMPLETED';
-  await transaction.save({ session });
+  await transaction.save({ transaction: t }); // changed: session -> transaction: t
 
-  await session.commitTransaction();
-  session.endSession();
+  await t.commit(); // changed: session.commitTransaction() -> t.commit()
 
   /** 10. Send email notification */
 
@@ -134,6 +133,12 @@ async function createTransaction(req, res) {
     message: 'Transaction completed successfully',
     transaction
   });
+
+  } catch (error) { // added: required, otherwise a failed step leaves DB inconsistent
+    await t.rollback();
+    console.error('Transaction failed:', error);
+    res.status(500).json({ message: 'Transaction failed', error: error.message });
+  }
 
 }
 

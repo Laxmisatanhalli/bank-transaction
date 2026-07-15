@@ -1,44 +1,54 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-
-const transactionSchema = new mongoose.Schema({
-  fromAccount: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Account',
-    required: [ true, 'transaction must belong to an account' ],
-    index: true
+const Transaction = sequelize.define('Transaction', {
+  fromAccountId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'transaction must belong to an account' },
+    },
   },
-  toAccount: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Account',
-    required: [ true, 'transaction must belong to an account' ],
-    index: true
+  toAccountId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'transaction must belong to an account' },
+    },
   },
   status: {
-    type: String,
-    enum: {
-      values:[ 'PENDING','COMPLETED', 'FAILED', 'REVERSED' ],
-      message: 'status must be PENDING, COMPLETED, FAILED or REVERSED',
-     },
-      default: 'PENDING'
+    type: DataTypes.ENUM('PENDING', 'COMPLETED', 'FAILED', 'REVERSED'),
+    defaultValue: 'PENDING',
+    validate: {
+      isIn: {
+        args: [['PENDING', 'COMPLETED', 'FAILED', 'REVERSED']],
+        msg: 'status must be PENDING, COMPLETED, FAILED or REVERSED',
+      },
+    },
   },
   amount: {
-    type: Number,
-    required: [ true, 'transaction must have an amount' ],
-    min: [ 0, 'transaction amount cannot be negative' ]
+    type: DataTypes.DECIMAL(15, 2), // same reasoning as Ledger — avoids float rounding errors
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'transaction must have an amount' },
+      min: { args: [0], msg: 'transaction amount cannot be negative' },
+    },
   },
   idempotencyKey: {
-    type: String,
-    required: [ true, 'transaction must have an idempotency key' ],
-    index: true,
-    unique: true
-  }
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      notNull: { msg: 'transaction must have an idempotency key' },
+    },
+  },
+}, {
+  timestamps: true,
+  indexes: [
+    { fields: ['fromAccountId'] },
+    { fields: ['toAccountId'] },
+    // idempotencyKey already gets an index automatically from unique: true
+  ],
+});
 
-
-},{
-  timestamps: true
-})
-
-const transactionModel = mongoose.model('Transaction', transactionSchema);
-
-module.exports = transactionModel;
+module.exports = Transaction;

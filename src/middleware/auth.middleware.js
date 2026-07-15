@@ -1,4 +1,4 @@
-const userModel = require('../models/user.model');
+const { User } = require('../models'); // changed: import from central models/index.js
 const jwt = require('jsonwebtoken');
 
 
@@ -14,9 +14,8 @@ async function authMiddleware(req, res, next) {
     } 
 
     try{
-      // auth.middleware.js
-const decoded = jwt.verify(token, process.env.JWT_SECRET);
-const user = await userModel.findById(decoded.userID); // ✅ capital ID to match
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findByPk(decoded.userId); // changed: findById -> findByPk, userID -> userId
 
 if (!user) {
   return res.status(401).json({ message: 'User not found' }); 

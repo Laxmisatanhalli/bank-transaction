@@ -1,49 +1,58 @@
-const mogoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const ledgerSchema = new mogoose.Schema({
-  account: {
-    type: mogoose.Schema.Types.ObjectId,
-    ref: 'Account',
-    required: [ true, 'ledger must belong to an account' ],
-    index: true,
-    immutable: true
+const Ledger = sequelize.define('Ledger', {
+  accountId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'ledger must belong to an account' },
+    },
   },
   amount: {
-    type: Number,
-    required: [ true, 'ledger must have an amount' ], 
-    immutable: true
-  },
-  transaction: {
-    type: mogoose.Schema.Types.ObjectId,
-    ref: 'Transaction',
-    required: [ true, 'ledger must belong to a transaction' ],
-    index: true,
-    immutable: true
+    type: DataTypes.DECIMAL(15, 2), // better than FLOAT for money — avoids rounding errors
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'ledger must have an amount' },
     },
-    type: {
-      type: String,
-      enum: {
-        values:[ 'debit','credit' ],
-        message: 'type must be debit or credit',
-       },
-        required: [ true, 'ledger must have a type' ],
-        immutable: true
-    }
-  })
+  },
+  transactionId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      notNull: { msg: 'ledger must belong to a transaction' },
+    },
+  },
+  type: {
+    type: DataTypes.ENUM('debit', 'credit'),
+    allowNull: false,
+    validate: {
+      isIn: {
+        args: [['debit', 'credit']],
+        msg: 'type must be debit or credit',
+      },
+    },
+  },
+}, {
+  timestamps: true,
+  indexes: [
+    { fields: ['accountId'] },
+    { fields: ['transactionId'] },
+  ],
+  hooks: {
+    beforeUpdate: () => {
+      throw new Error('Ledger entries cannot be modified or deleted');
+    },
+    beforeDestroy: () => {
+      throw new Error('Ledger entries cannot be modified or deleted');
+    },
+    beforeBulkUpdate: () => {
+      throw new Error('Ledger entries cannot be modified or deleted');
+    },
+    beforeBulkDestroy: () => {
+      throw new Error('Ledger entries cannot be modified or deleted');
+    },
+  },
+});
 
-  function preventLedgerModification() {
-    throw new Error('Ledger entries cannot be modified or deleted');
-  }
-
-  ledgerSchema.pre('findOneAndUpdate', preventLedgerModification);
-  ledgerSchema.pre('updateOne', preventLedgerModification);
-  ledgerSchema.pre('deleteOne', preventLedgerModification);
-  ledgerSchema.pre('remove', preventLedgerModification);
-  ledgerSchema.pre('deleteMany', preventLedgerModification);
-  ledgerSchema.pre('updateMany', preventLedgerModification);
-  ledgerSchema.pre('findOneAndDelete', preventLedgerModification);
-  ledgerSchema.pre('findOneAndRemove', preventLedgerModification);
-
-const ledgerModel = mogoose.model('Ledger', ledgerSchema);
-
-module.exports = ledgerModel;
+module.exports = Ledger;
