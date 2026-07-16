@@ -30,6 +30,8 @@ const User = sequelize.define('User', {
   systemUser: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+    immutable: true,
+    select: false
   },
 }, {
   timestamps: true,

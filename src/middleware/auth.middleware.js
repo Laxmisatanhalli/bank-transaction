@@ -29,4 +29,26 @@ return next();
     }
 }
 
-module.exports = {authMiddleware};
+async function authsystemUserMiddleware(req, res, next) {
+
+    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ message: 'Unauthorized access, token is missing' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findByPk(decoded.userId).select('+systemUser'); // changed: findById -> findByPk, userID -> userId
+        
+        if (!user || !user.systemUser) {
+            return res.status(403).json({ message: 'Forbidden: Access denied for non-system users' });
+        }
+        req.user = user;
+        return next();
+    } catch (err) {
+        return res.status(401).json({ message: 'Unauthorized access, invalid token' });
+    }
+}
+
+module.exports = {authMiddleware, authsystemUserMiddleware};
