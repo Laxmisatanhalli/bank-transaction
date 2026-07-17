@@ -147,13 +147,8 @@ async function createTransaction(req, res) {
     transaction
   });
 
-  } catch (error) { // added: required, otherwise a failed step leaves DB inconsistent
-    await session.rollback();
-    console.error('Transaction failed:', error);
-    res.status(500).json({ message: 'Transaction failed', error: error.message });
-  }
+  } 
 
-}
 
 async function createInitialFundsTransaction(req, res) {
   const { toAccount, amount, idempotencyKey } = req.body;
