@@ -30,13 +30,10 @@ const User = sequelize.define('User', {
   systemUser: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
-    immutable: true,
-    select: false
   },
 }, {
   timestamps: true,
 
-  // <-- HERE, inside the options object:
   hooks: {
     beforeCreate: async (user) => {
       if (user.password) {
@@ -56,6 +53,9 @@ const User = sequelize.define('User', {
   scopes: {
     withPassword: {
       attributes: {},
+    },
+    withSystemUser: {
+      attributes: { include: ['systemUser'] },
     },
   },
 });

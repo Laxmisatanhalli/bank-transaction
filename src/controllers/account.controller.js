@@ -17,4 +17,34 @@ async function createAccountController (req, res) {
   }
 }
 
-module.exports = { createAccountController };
+async function getUserAccountsController(req, res) {
+
+  const accounts = await Account.findAll({
+    where: { userId: req.user.id }
+
+    
+  });
+  res.status(200).json({ accounts });
+}
+
+
+async function getAccountBalanceController(req, res) {
+  const accountId = req.params.accountId;
+
+  const account = await Account.findOne({
+    where: { id: accountId, userId: req.user.id }
+  });
+
+  if (!account) {
+    return res.status(404).json({ message: 'Account not found' });
+  }
+
+  const balance = await account.getBalance();
+
+  res.status(200).json({
+    accountId: account.id,
+    balance: balance
+  });
+}
+
+module.exports = { createAccountController, getUserAccountsController,getAccountBalanceController };
