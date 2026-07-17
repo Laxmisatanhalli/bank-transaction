@@ -91,39 +91,52 @@ async function createTransaction(req, res) {
     });
    }
 
+   let transaction;
+   try{
+
    /** 5. Create transaction (PENDING) */
+   const session = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
+  session.start();
 
-   const t = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
 
-   try { // added: try/catch required to rollback on failure
-
-   const transaction = await transactionModel.create({
-    fromAccountId: fromAccount, // fixed: was fromAccount, must match model field name
-    toAccountId: toAccount, // fixed: was toAccount, must match model field name
+  transaction = (await transactionModel.create([{
+    fromAccountId: fromAccount,
+    toAccountId: toAccount, 
     amount,
     idempotencyKey,
     status: 'PENDING'
-  }, { transaction: t }); // changed: session -> transaction: t
+  }], { transaction: session }))[0]; // changed: session -> transaction: session
 
-  const debitLedgerEntry = await ledgerModel.create({
-    accountId: fromAccount, // fixed: was account, must match model field name
+  const debitLedgerEntry = await ledgerModel.create([{
+    accountId: fromAccount, 
     amount: amount,
-    transactionId: transaction.id, // fixed: was transaction, must match model field name
+    transactionId: transaction.id, 
     type: 'debit'
-  }, { transaction: t });
+  }], { transaction: session });
+
+  await (()=>{
+    return new Promise((resolve) => setTimeout(resolve, 100 * 1000)); // simulate a delay of 100 seconds
+       
+  })()
 
 
-  const creditLedgerEntry = await ledgerModel.create({
-    accountId: toAccount, // fixed: was account, must match model field name
+  const creditLedgerEntry = await ledgerModel.create([{
+    accountId: toAccount, 
     amount: amount,
-    transactionId: transaction.id, // fixed: was transaction, must match model field name
+    transactionId: transaction.id, 
     type: 'credit'
-  }, { transaction: t });
+  }], { transaction: session });
 
-  transaction.status = 'COMPLETED';
-  await transaction.save({ transaction: t }); // changed: session -> transaction: t
+  /** 8. Mark transaction COMPLETED */
+  await transactionModel.update(
+    { status: 'COMPLETED' },
+    { where: { id: transaction.id }, transaction: session }
+  );
 
-  await t.commit(); // changed: session.commitTransaction() -> t.commit()
+  await session.commit(); // changed: session.commitTransaction() -> session.commit()
+} catch (error) {
+  return res.status(500).json({ message: 'Transaction is pending due to an error, please retry after some time' });
+}
 
   /** 10. Send email notification */
 
@@ -135,7 +148,7 @@ async function createTransaction(req, res) {
   });
 
   } catch (error) { // added: required, otherwise a failed step leaves DB inconsistent
-    await t.rollback();
+    await session.rollback();
     console.error('Transaction failed:', error);
     res.status(500).json({ message: 'Transaction failed', error: error.message });
   }
@@ -174,26 +187,26 @@ async function createInitialFundsTransaction(req, res) {
   const session = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
   session.start(); // changed: session.startSession() -> session.start()
 
-  const transaction = await transactionModel.create({
+  const transaction = new transactionModel({
     fromAccountId: fromUserAccount.id, 
     toAccountId: toUserAccount.id, 
     amount,
     idempotencyKey,
     status: 'PENDING'
-  }, { transaction: session }); 
+  }); 
 
-  const debitLedgerEntry = await ledgerModel.create({
+  const debitLedgerEntry = await ledgerModel.create([{
     amount: amount,
-     account: fromUserAccount.id,
-      transaction: transaction.id,
-       type: 'debit'}, 
+     accountId: fromUserAccount.id,
+      transactionId: transaction.id,
+       type: 'debit'}], 
        { transaction: session });
 
-  const creditLedgerEntry = await ledgerModel.create({
+  const creditLedgerEntry = await ledgerModel.create([{
     amount: amount,
-     account: toUserAccount.id, 
-     transaction: transaction.id, 
-     type: 'credit'}, 
+     accountId: toUserAccount.id, 
+     transactionId: transaction.id, 
+     type: 'credit'}], 
      { transaction: session }
     );
 
