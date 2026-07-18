@@ -96,7 +96,7 @@ async function createTransaction(req, res) {
 
    /** 5. Create transaction (PENDING) */
    const session = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
-  session.start();
+ 
 
 
   transaction = (await transactionModel.create([{
@@ -105,14 +105,14 @@ async function createTransaction(req, res) {
     amount,
     idempotencyKey,
     status: 'PENDING'
-  }], { transaction: session }))[0]; // changed: session -> transaction: session
+  }], { transaction: session })); // changed: session -> transaction: session
 
-  const debitLedgerEntry = await ledgerModel.create([{
+  const debitLedgerEntry = await ledgerModel.create({
     accountId: fromAccount, 
     amount: amount,
     transactionId: transaction.id, 
     type: 'debit'
-  }], { transaction: session });
+  }, { transaction: session });
 
   await (()=>{
     return new Promise((resolve) => setTimeout(resolve, 100 * 1000)); // simulate a delay of 100 seconds
@@ -120,12 +120,12 @@ async function createTransaction(req, res) {
   })()
 
 
-  const creditLedgerEntry = await ledgerModel.create([{
+  const creditLedgerEntry = await ledgerModel.create({
     accountId: toAccount, 
     amount: amount,
     transactionId: transaction.id, 
     type: 'credit'
-  }], { transaction: session });
+  }, { transaction: session });
 
   /** 8. Mark transaction COMPLETED */
   await transactionModel.update(
@@ -160,7 +160,7 @@ async function createInitialFundsTransaction(req, res) {
   }
 
   const toUserAccount = await accountModel.findOne({
-    where: { id: toAccount } // changed: _id -> where: { id }
+    where: { id: toAccount }
   });
 
   if (!toUserAccount) {
@@ -168,53 +168,58 @@ async function createInitialFundsTransaction(req, res) {
   }
 
   const fromUserAccount = await accountModel.findOne({ 
-    where: { 
-      systemUser: true ,
-      userId: req.user.id
-    }
-  }); // changed: findOne({ systemUser: true })
+    where: { userId: req.user.id } // fixed: removed invalid systemUser column check
+  });
 
   if (!fromUserAccount) {
     return res.status(404).json({ message: 'System user account not found' });
   }
 
+  const session = await sequelize.transaction(); // fixed: removed session.start()
 
-  const session = await sequelize.transaction(); // changed: mongoose session -> sequelize transaction
-  session.start(); // changed: session.startSession() -> session.start()
+  try {
+    const transaction = (await transactionModel.create({
+      fromAccountId: fromUserAccount.id,
+      toAccountId: toUserAccount.id,
+      amount,
+      idempotencyKey,
+      status: 'PENDING'
+    }, { transaction: session })); // fixed: was `new transactionModel()`
 
-  const transaction = new transactionModel({
-    fromAccountId: fromUserAccount.id, 
-    toAccountId: toUserAccount.id, 
-    amount,
-    idempotencyKey,
-    status: 'PENDING'
-  }); 
-
-  const debitLedgerEntry = await ledgerModel.create([{
-    amount: amount,
-     accountId: fromUserAccount.id,
+    await ledgerModel.create({
+      amount: amount,
+      accountId: fromUserAccount.id,
       transactionId: transaction.id,
-       type: 'debit'}], 
-       { transaction: session });
+      type: 'debit'
+    }, { transaction: session });
 
-  const creditLedgerEntry = await ledgerModel.create([{
-    amount: amount,
-     accountId: toUserAccount.id, 
-     transactionId: transaction.id, 
-     type: 'credit'}], 
-     { transaction: session }
-    );
+    await ledgerModel.create({
+      amount: amount,
+      accountId: toUserAccount.id,
+      transactionId: transaction.id,
+      type: 'credit'
+    }, { transaction: session });
 
-    transaction.status = 'COMPLETED';
-    await transaction.save({ transaction: session });
+    await transactionModel.update(
+  { status: 'COMPLETED' },
+  { where: { id: transaction.id }, transaction: session }
+);
 
-    await session.commit(); // changed: session.commitTransaction() -> session.commit()
-    session.end(); // changed: session.endSession() -> session.end()
+await session.commit();
 
-    return res.status(201).json({
-      message: 'Initial funds transaction completed successfully',
-      transaction: transaction
-    });
+transaction.status = 'COMPLETED'; 
+
+return res.status(201).json({
+  message: 'Initial funds transaction completed successfully',
+  transaction
+});
+
+
+  } catch (error) {
+    await session.rollback();
+    console.error('Initial funds transaction failed:', error);
+    return res.status(500).json({ message: 'Transaction failed', error: error.message });
+  }
 
 }
 

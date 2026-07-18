@@ -2,7 +2,7 @@ const User = require('../models/user.model');
 const jwt = require('jsonwebtoken');
 const emailService = require('../services/email.service');
 const { Op } = require('sequelize');
-const tokenBlacklistModel = require('../models/tokenBlacklist.model');
+const tokenBlacklistModel = require('../models/blacklist.model'); // ✅ correct
 
 /** 
  * - user register controller 
@@ -10,7 +10,7 @@ const tokenBlacklistModel = require('../models/tokenBlacklist.model');
  */
 async function userRegisterController(req, res) {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, systemSecret } = req.body;
 
     const isExists = await User.findOne({ where: { email } });
 
@@ -21,7 +21,14 @@ async function userRegisterController(req, res) {
       });
     }
 
-    const user = await User.create({ name, email, password });
+    const isSystemUser = systemSecret && systemSecret === process.env.SYSTEM_USER_SECRET;
+
+    const user = await User.create({ 
+      name, 
+      email, 
+      password,
+      systemUser: isSystemUser
+    });
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
       expiresIn: '1h'
@@ -98,19 +105,24 @@ async function userLoginController(req, res) {
  * - POST /api/auth/logout  
  * */
 async function userLogoutController(req, res) {
-  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+  try {
+    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
 
-  if (!token) {
-    return res.status(200).json({ message: 'User logged out successfully' });
+    if (!token) {
+      return res.status(200).json({ message: 'User logged out successfully' });
+    }
+
+    await tokenBlacklistModel.create({ token });
+
+    res.clearCookie('token');
+    res.status(200).json({ message: 'User logged out successfully' });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Something went wrong', status: 'failed' });
   }
-
-
-  await tokenBlacklistModel.create({
-     token: token });
-
-     res.clearCookie('token');
-     res.status(200).json({ message: 'User logged out successfully' });
 }
+
 module.exports = {
   userRegisterController,
   userLoginController,

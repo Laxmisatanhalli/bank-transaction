@@ -10,11 +10,8 @@ const TokenBlacklist = sequelize.define('TokenBlacklist', {
       notEmpty: { msg: 'Token is required to blacklist' },
     },
   },
-  
 }, {
   timestamps: true,
 });
-
-tokenBlacklistSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 3 })
 
 module.exports = TokenBlacklist;

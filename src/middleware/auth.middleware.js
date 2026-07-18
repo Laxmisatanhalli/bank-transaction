@@ -1,6 +1,6 @@
 const { User } = require('../models'); // changed: import from central models/index.js
 const jwt = require('jsonwebtoken');
-const tokenBlacklistModel = require('../models/tokenBlacklist.model');
+const tokenBlacklistModel = require('../models/blacklist.model');
 
 
 async function authMiddleware(req, res, next) {
