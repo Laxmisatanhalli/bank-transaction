@@ -5,13 +5,11 @@ const { sequelize } = require('./src/config/db');
 const db = require('./src/models'); // loads models + associations
 
 
-connectTodb();
+async function start() {
+  await connectTodb();
+  await sequelize.sync({ alter: true });
+  console.log('Tables synced');
+  app.listen(3000, () => console.log('Server is running on port 3000'));
+}
 
-sequelize.sync({ alter: true }) // creates/updates tables to match models
-  .then(() => console.log('Tables synced'))
-  .catch(err => console.error('Sync error:', err));
-
-
-app.listen(3000, () => {
-    console.log('Server is running on port 3000');
-})
+start().catch(err => console.error('Startup error:', err));

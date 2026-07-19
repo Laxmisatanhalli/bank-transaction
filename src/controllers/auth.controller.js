@@ -2,12 +2,14 @@ const User = require('../models/user.model');
 const jwt = require('jsonwebtoken');
 const emailService = require('../services/email.service');
 const { Op } = require('sequelize');
-const tokenBlacklistModel = require('../models/blacklist.model'); // ✅ correct
+const tokenBlacklistModel = require('../models/blacklist.model'); 
+const bcrypt = require('bcrypt');
 
 /** 
  * - user register controller 
  * - POST /api/auth/register
  */
+
 async function userRegisterController(req, res) {
   try {
     const { email, password, name, systemSecret } = req.body;
@@ -23,10 +25,12 @@ async function userRegisterController(req, res) {
 
     const isSystemUser = systemSecret && systemSecret === process.env.SYSTEM_USER_SECRET;
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = await User.create({ 
       name, 
       email, 
-      password,
+      password: hashedPassword,
       systemUser: isSystemUser
     });
 
@@ -34,7 +38,11 @@ async function userRegisterController(req, res) {
       expiresIn: '1h'
     });
 
-    res.cookie('token', token);
+    res.cookie('token', token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'strict'
+});
 
     res.status(201).json({
       user: {
@@ -83,7 +91,11 @@ async function userLoginController(req, res) {
       expiresIn: '1h'
     });
 
-    res.cookie('token', token);
+    res.cookie('token', token, {
+  httpOnly: true,   // JS on the frontend can't read this cookie (blocks XSS token theft)
+  secure: true,      // only sent over HTTPS
+  sameSite: 'strict' // blocks the cookie being sent on cross-site requests (CSRF protection)
+});
 
     res.status(200).json({
       user: {
