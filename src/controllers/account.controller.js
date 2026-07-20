@@ -40,7 +40,7 @@ async function getAccountBalanceController(req, res) {
   }
 
   const balance = await account.getBalance();
-
+console.log('DEBUG balance:', balance);
   res.status(200).json({
     accountId: account.id,
     balance: balance

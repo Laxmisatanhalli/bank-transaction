@@ -99,13 +99,13 @@ async function createTransaction(req, res) {
  
 
 
-  transaction = (await transactionModel.create([{
+  transaction = (await transactionModel.create({
     fromAccountId: fromAccount,
     toAccountId: toAccount, 
     amount,
     idempotencyKey,
     status: 'PENDING'
-  }], { transaction: session })); // changed: session -> transaction: session
+  }, { transaction: session })); // changed: session -> transaction: session
 
   const debitLedgerEntry = await ledgerModel.create({
     accountId: fromAccount, 
@@ -115,7 +115,7 @@ async function createTransaction(req, res) {
   }, { transaction: session });
 
   await (()=>{
-    return new Promise((resolve) => setTimeout(resolve, 100 * 1000)); // simulate a delay of 100 seconds
+    return new Promise((resolve) => setTimeout(resolve, 15 * 1000)); // simulate a delay of 15 seconds
        
   })()
 
@@ -132,6 +132,7 @@ async function createTransaction(req, res) {
     { status: 'COMPLETED' },
     { where: { id: transaction.id }, transaction: session }
   );
+  transaction.status = 'COMPLETED';
 
   await session.commit(); // changed: session.commitTransaction() -> session.commit()
 } catch (error) {
